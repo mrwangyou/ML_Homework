@@ -32,18 +32,20 @@ import numpy as np
 # print(F.log_softmax(tmp, dim=1))
 
 
+x = torch.tensor([1])
+y = torch.rand([1, 5])
+print(x)
+print(y)
+loss = nn.NLLLoss()
+print(loss(y, x))
+
+# print(x[0, 35])
+
+# print(
+#     x[0].item()
+# )
 
 
-class Customer:
-    def __init__(self):
-        pass
-
-    def __str__(self) -> str:
-        return '123'
-
-
-c = Customer()
-print(c)
 
 
 

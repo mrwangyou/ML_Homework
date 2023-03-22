@@ -50,12 +50,13 @@ class ImageDataset(Dataset):
 
         if file == 'train':
             self.path = './sg_dataset/sg_train_images/'
-            self.annotation = json.load(open('./sg_dataset/sg_train_annotations.json'))
+            self.annotation = json.load(open('./json_dataset/annotations_train.json'))
         elif file == 'test':
             self.path = './sg_dataset/sg_test_images/'
-            self.annotation = json.load(open('./sg_dataset/sg_test_annotations.json'))
+            self.annotation = json.load(open('./json_dataset/annotations_test.json'))
         
         self.ImgList = os.listdir(self.path)
+        # print(len(self.annotation))
 
     def __len__(self):
 
@@ -68,11 +69,11 @@ class ImageDataset(Dataset):
 
         data = Image.open(self.path + img['ID'])
         w, h = data.size
-        resize = transforms.Resize([2048, 2048])
+        resize = transforms.Resize([128, 128])
         data = resize(data)
-        img['data'] = torch.from_numpy(np.array(data))
+        img['data'] = torch.from_numpy(np.array(data)) / 256
 
-        img['label'] = self.annotation[img['ID']][0]
+        img['label'] = self.annotation[img['ID']]
 
         return img
 
@@ -80,9 +81,12 @@ class ImageDataset(Dataset):
 class MyCNN(nn.Module):
 
     def __init__(self,
-                 input_dim=2048,
-                 hidden_dim=1024,
-                 linear_dim=512,
+                 input_dim=3,
+                 hidden_dim_1=128,
+                 hidden_dim_2=64,
+                 hidden_dim_3=32,
+                 linear_dim=1,
+                 kernel_size=9,
                  predicate_dim=70,
                  object_dim=100,
                  subject_dim=100,
@@ -90,24 +94,31 @@ class MyCNN(nn.Module):
                  ):
         super(MyCNN, self).__init__()
         self.batch_size = batch_size
-        self.linear_dim = linear_dim
+        predicate_input = 115370
+        object_input = 115371
+        subject_input = 115371
 
-        self.conv1 = nn.Conv2d(input_dim, hidden_dim)
-        self.conv2 = nn.Conv2d(hidden_dim, linear_dim)
-        assert linear_dim % 3 == 0
-        self.linear1 = nn.Linear(linear_dim / 3, predicate_dim)
-        self.linear2 = nn.Linear(linear_dim / 3, object_dim)
-        self.linear3 = nn.Linear(linear_dim / 3, subject_dim)
+        self.conv1 = nn.Conv2d(input_dim, hidden_dim_1, kernel_size)
+        self.conv2 = nn.Conv2d(hidden_dim_1, hidden_dim_2, kernel_size)
+        self.conv3 = nn.Conv2d(hidden_dim_2, hidden_dim_3, kernel_size)
+        self.linear1 = nn.Linear(predicate_input, predicate_dim)
+        self.linear2 = nn.Linear(object_input, object_dim)
+        self.linear3 = nn.Linear(subject_input, subject_dim)
         self.relu = nn.ReLU()
 
-    def forward(self, img):  # 1*2048*2048*3
-        output = self.conv1(img)  # 1*1024*1024*3
-        output = self.conv2(output)  # 1*512*512*3
-        output = output.view(self.batch_size, -1)
-        predicate_output = output[:, :self.linear_dim / 3]
-        object_output = output[:, self.linear_dim / 3: self.linear_dim / 3 * 2]
-        subject_output = output[:, self.linear_dim / 3 * 2:]
+    def forward(self, img):  # 1*128*128*3
+        output = torch.permute(img, (0, 3, 1, 2))  # 1*3*128*128
+        
+        output = self.conv1(output)  # 1*128*126*126
+        output = self.conv2(output)  # 1*64*124*124
+        output = self.conv3(output)  # 1*32*122*122
+        # print(output.size())
+        output = output.contiguous().view(self.batch_size, -1)
 
+        predicate_output = output[:, :int(output.size(1) / 3)]
+        object_output = output[:, int(output.size(1) / 3): int(output.size(1) / 3 * 2)]
+        subject_output = output[:, int(output.size(1) / 3 * 2):]
+        
         output1 = self.relu(self.linear1(predicate_output))
         output1 = F.log_softmax(output1, dim=1)
 
@@ -133,9 +144,12 @@ class MyCNN(nn.Module):
 
 
 def train():
-    INPUT_DIM = 2048
-    HIDDEN_DIM = 1024
-    LINEAR_DIM = 512
+    INPUT_DIM = 3
+    HIDDEN_DIM_1 = 128
+    HIDDEN_DIM_2 = 64
+    HIDDEN_DIM_3 = 32
+    LINEAR_DIM = 1
+    KERNEL_SIZE = 9
     PREDICATE_DIM = 70
     OBJECT_DIM = 100
     SUBJECT_DIM = 100
@@ -161,21 +175,25 @@ def train():
 
     model = MyCNN(
         input_dim=INPUT_DIM,
-        hidden_dim=HIDDEN_DIM,
+        hidden_dim_1=HIDDEN_DIM_1,
+        hidden_dim_2=HIDDEN_DIM_2,
+        hidden_dim_3=HIDDEN_DIM_3,
         linear_dim=LINEAR_DIM,
+        kernel_size=KERNEL_SIZE,
         predicate_dim=PREDICATE_DIM,
         object_dim=OBJECT_DIM,
         subject_dim=SUBJECT_DIM,
         batch_size=BATCH_SIZE
     )
 
-    device_ids = [0, 1, 2, 3]
+    device_ids = [0]
     model = nn.DataParallel(model, device_ids=device_ids)
     model.cuda()
 
     loss_function = nn.NLLLoss()
-    # optimizer = optim.Adam(model.parameters(), lr=1e-3)
-    optimizer = optim.SGD(model.parameters(), lr = 1e-2, momentum=0.9, weight_decay = WEIGHT_DECAY)
+    # loss_function = nn.MultiMarginLoss()
+    optimizer = optim.Adam(model.parameters(), lr=1e-3)
+    # optimizer = optim.SGD(model.parameters(), lr = 1e-2, momentum=0.9, weight_decay = WEIGHT_DECAY)
     bestTillNow = 0
     for i in range(EPOCH):
         print('epoch: {} start!'.format(i))
@@ -207,25 +225,66 @@ def train_epoch(model,
         # if cnt % 100 == 0:
         #     print('Begin ' + str(int(cnt / 100)) + ' batch in an epoch!')
         label = batch['label']
-        sent = batch['tweet'].squeeze(0)
-        property = batch['property']
-        label = label.cuda()
-        sent = sent.cuda()
-        property = property.cuda()
-        pred = model(sent, property).unsqueeze(0)
-        if pred[0][0] > pred[0][1] and label == 0 or pred[0][0] < pred[0][1] and label == 1:
-            acc = acc + 1
-        if pred[0][0] > pred[0][1] and label == 0:
-            TP = TP + 1
-        if pred[0][0] > pred[0][1] and label == 1:
-            FP = FP + 1
-        if pred[0][0] < pred[0][1] and label == 1:
-            TN = TN + 1
-        if pred[0][0] < pred[0][1] and label == 0:
-            FN = FN + 1
+        data = batch['data']
 
-        loss = loss_function(pred, label)
-        avg_loss += loss.item()
+        # label = label.cuda()
+        # data = data.cuda()
+        pred, obj, sub = model(data)
+        # print(pred.size())
+        # print(obj.size())
+        # print(sub.size())
+        # print(label[0]['predicate'].item())
+        # print(label[0]['predicate'].item())
+        # print(pred[label[0]['predicate'].item()])
+        # print(label[0]['object']['category'].item())
+        # print(label[0]['subject']['category'].item())
+        # try:
+        if max(pred[0]) == pred[0, label[0]['predicate'].item()] and \
+            max(obj[0]) == obj[0, label[0]['object']['category'].item()] and \
+            max(sub[0]) == sub[0, label[0]['subject']['category'].item()]:
+            acc = acc + 1
+        # except:
+        #     print("!!!")
+        #     print(label)
+        #     print(label[0]['object']['category'])
+        #     print(label[0]['subject']['category'])
+
+
+        # print(label[0]['predicate'].item())
+        # print(label[0]['object']['category'].item())
+        # print(label[0]['subject']['category'].item())
+
+        # labelBP = torch.tensor([
+        #     label[0]['predicate'].item(),
+        #     label[0]['object']['category'].item(),
+        #     label[0]['subject']['category'].item(),
+        # ]).cuda()
+
+        # print(labelBP.size())
+        # # print(obj[0])
+        # outputBP = torch.cat([
+        #     torch.cat([pred, torch.Tensor([[-100000] * 30]).cuda()], dim=1),
+        #     obj,
+        #     sub,
+        # ], dim=0).cuda()
+        # print(outputBP.size())
+        print(label[0]['predicate'])
+        print(pred)
+        loss_1 = loss_function(
+            pred, label[0]['predicate'].cuda()
+        )
+
+        loss_2 = loss_function(
+            obj, label[0]['object']['category'].cuda()
+        )
+
+        loss_3 = loss_function(
+            sub, label[0]['subject']['category'].cuda()
+        )
+
+        
+
+        loss = (loss_1 + loss_2 + loss_3) / 3
 
         optimizer.zero_grad()
         loss.backward()
