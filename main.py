@@ -306,31 +306,31 @@ def evaluate_epoch(model,
         if flag == 1:
             acc = acc + 1
             
-        try:
-            loss_1 = loss_function(
-                pred, label[0]['predicate'].cuda()
-            )
+        # try:
+        #     loss_1 = loss_function(
+        #         pred, label[0]['predicate'].cuda()
+        #     )
 
-            loss_2 = loss_function(
-                obj, label[0]['object']['category'].cuda()
-            )
+        #     loss_2 = loss_function(
+        #         obj, label[0]['object']['category'].cuda()
+        #     )
 
-            loss_3 = loss_function(
-                sub, label[0]['subject']['category'].cuda()
-            )
+        #     loss_3 = loss_function(
+        #         sub, label[0]['subject']['category'].cuda()
+        #     )
 
         
 
-            loss = (loss_1 + loss_2 + loss_3) / 3
+        #     loss = (loss_1 + loss_2 + loss_3) / 3
 
-            avg_loss = avg_loss + loss
+        #     avg_loss = avg_loss + loss
 
-        except:
-            pass
+        # except:
+        #     pass
     avg_loss = avg_loss / cnt
     acc = acc / float(cnt)
     print('test:')
-    print('loss: ' + str(avg_loss))
+    # print('loss: ' + str(avg_loss))
     print('acc: ' + str(acc))
 
     return acc
