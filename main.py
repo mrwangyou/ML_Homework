@@ -31,6 +31,7 @@ import math
 import json
 from torch.utils.data import Dataset, DataLoader
 import numpy as np
+from tqdm import tqdm
 
 from PIL import Image
 import torchvision
@@ -199,10 +200,10 @@ def train():
         print('epoch: {} start!'.format(i))
         train_epoch(model, trainLoader, loss_function, optimizer, i)
         # dev_acc = evaluate_epoch(model, devLoader, loss_function, i, 1)
-        test_acc = evaluate_epoch(model, testLoader, loss_function, i, 2)
+        # test_acc = evaluate_epoch(model, testLoader, loss_function, i, 2)
         torch.save(model.module.state_dict(), './bestModel/Epoch' + str(i) + 'acc' + str(test_acc) + '.pt')
-        if i == SMALL_STEP_EPOCH:
-            optimizer = optim.SGD(model.parameters(), lr = 1e-3, momentum=0.9, weight_decay = WEIGHT_DECAY)
+        # if i == SMALL_STEP_EPOCH:
+        #     optimizer = optim.SGD(model.parameters(), lr = 1e-3, momentum=0.9, weight_decay = WEIGHT_DECAY)
 
 
 def train_epoch(model,
@@ -220,7 +221,7 @@ def train_epoch(model,
     TN = 0
     FN = 0
 
-    for batch in train_data:
+    for batch in tqdm(train_data):
         cnt += 1
         # if cnt % 100 == 0:
         #     print('Begin ' + str(int(cnt / 100)) + ' batch in an epoch!')
@@ -238,13 +239,19 @@ def train_epoch(model,
         # print(pred[label[0]['predicate'].item()])
         # print(label[0]['object']['category'].item())
         # print(label[0]['subject']['category'].item())
-        # try:
-        if max(pred[0]) == pred[0, label[0]['predicate'].item()] and \
-            max(obj[0]) == obj[0, label[0]['object']['category'].item()] and \
-            max(sub[0]) == sub[0, label[0]['subject']['category'].item()]:
-            acc = acc + 1
-        # except:
-        #     print("!!!")
+        try:
+            if max(pred[0]) == pred[0, label[0]['predicate'].item()] and \
+                max(obj[0]) == obj[0, label[0]['object']['category'].item()] and \
+                max(sub[0]) == sub[0, label[0]['subject']['category'].item()]:
+                acc = acc + 1
+        except:
+            pass
+            # print("!!!")
+            # print(pred)
+            # print(label)
+            # print(batch['ID'])
+            # print(label[0])
+            # raise Exception(acc)
         #     print(label)
         #     print(label[0]['object']['category'])
         #     print(label[0]['subject']['category'])
@@ -268,44 +275,49 @@ def train_epoch(model,
         #     sub,
         # ], dim=0).cuda()
         # print(outputBP.size())
-        print(label[0]['predicate'])
-        print(pred)
-        loss_1 = loss_function(
-            pred, label[0]['predicate'].cuda()
-        )
+        # print(label[0]['predicate'])
+        # print(pred)
+        try:
+            loss_1 = loss_function(
+                pred, label[0]['predicate'].cuda()
+            )
 
-        loss_2 = loss_function(
-            obj, label[0]['object']['category'].cuda()
-        )
+            loss_2 = loss_function(
+                obj, label[0]['object']['category'].cuda()
+            )
 
-        loss_3 = loss_function(
-            sub, label[0]['subject']['category'].cuda()
-        )
+            loss_3 = loss_function(
+                sub, label[0]['subject']['category'].cuda()
+            )
 
         
 
-        loss = (loss_1 + loss_2 + loss_3) / 3
+            loss = (loss_1 + loss_2 + loss_3) / 3
 
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+        # print(loss)
 
-    avg_loss = avg_loss / cnt
-    precision = TP / (TP + FP)
-    recall = TP / (TP + FN)
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+        except:
+            pass
+
+    # avg_loss = avg_loss / cnt
+    # precision = TP / (TP + FP)
+    # recall = TP / (TP + FN)
     acc = acc / float(cnt)
-    specificity = TN / (TN + FP)
-    F1 = TP / (TP + 0.5 * (FP + FN))
-    MCC = (TP * TN - FP * FN) / math.sqrt((TP + FP) * (TP + FN) * (TN + FP) * (TN + FN))
+    # specificity = TN / (TN + FP)
+    # F1 = TP / (TP + 0.5 * (FP + FN))
+    # MCC = (TP * TN - FP * FN) / math.sqrt((TP + FP) * (TP + FN) * (TN + FP) * (TN + FN))
     print('epoch ' + str(i))
     print('train: ')
-    print('loss: ' + str(avg_loss))
-    print('precision: ' + str(precision))
-    print('recall: ' + str(recall))
+    # print('loss: ' + str(avg_loss))
+    # print('precision: ' + str(precision))
+    # print('recall: ' + str(recall))
     print('acc: ' + str(acc))
-    print('specificity: ' + str(specificity))
-    print('F1: ' + str(F1))
-    print('MCC: ' + str(MCC))
+    # print('specificity: ' + str(specificity))
+    # print('F1: ' + str(F1))
+    # print('MCC: ' + str(MCC))
 
 
 def evaluate_epoch(model,
