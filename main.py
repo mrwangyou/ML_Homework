@@ -196,6 +196,8 @@ def train():
     optimizer = optim.Adam(model.parameters(), lr=1e-3)
     # optimizer = optim.SGD(model.parameters(), lr = 1e-2, momentum=0.9, weight_decay = WEIGHT_DECAY)
     bestTillNow = 0
+    if 'bestModel' not in os.listdir('./'):
+        os.mkdir('./bestModel')
     for i in range(EPOCH):
         print('epoch: {} start!'.format(i))
         train_epoch(model, trainLoader, loss_function, optimizer, i)
